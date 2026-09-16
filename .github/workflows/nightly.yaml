@@ -1,0 +1,65 @@
+name: Nightly Data Refresh
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Cron runs shouldn't overlap a manual dispatch mid-flight, so serialize
+# instead of racing two commits against the same branch.
+concurrency:
+  group: nightly-data
+  cancel-in-progress: false
+
+jobs:
+  update-data:
+    name: Refresh Rancher support matrix data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download latest release binary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p bin
+          if gh release download --repo ${{ github.repository }} \
+              --pattern 'perdido-linux-x86_64' --dir bin --clobber; then
+            echo "using latest stable release"
+          else
+            echo "::warning::no stable release found yet, falling back to pre-release build"
+            gh release download pre-release --repo ${{ github.repository }} \
+              --pattern 'perdido-linux-x86_64' --dir bin --clobber
+          fi
+          chmod +x bin/perdido-linux-x86_64
+
+      - name: Run perdido query
+        run: ./bin/perdido-linux-x86_64 query --json > /tmp/rancher.json
+
+      - name: Sanity check output
+        run: jq -e 'length > 0' /tmp/rancher.json >/dev/null
+
+      - name: Check for changes
+        id: check
+        run: |
+          mkdir -p api
+          if [ -f api/rancher.json ] && cmp -s /tmp/rancher.json api/rancher.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit updated data
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          cp /tmp/rancher.json api/rancher.json
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add api/rancher.json
+          git commit -n -m "chore: update supported matrix data [skip ci]"
+          git pull --rebase origin "${{ github.ref_name }}"
+          git push origin HEAD:"${{ github.ref_name }}"
