@@ -1,0 +1,74 @@
+* Perdido
+
+It means "missing" in Portuguese. Here to provide the "missing" api for what is supported in rancher.
+
+I made AI build most of it, parsing html is not my favorite thing and the result is good enough to start using in other things which is the real use case.
+
+** Usage
+
+#+begin_src sh
+perdido query 2>/dev/null
+ Rancher   RKE2 Max         RKE2 Min         K3s Max        K3s Min        K8s Max   K8s Min
+ v2.15.1   v1.36.4+rke2r1   v1.34.11+rke2r1  v1.36.4+k3s1   v1.34.11+k3s1  v1.36.4   v1.34.11
+ v2.14.5   v1.35.8+rke2r1   v1.33.13+rke2r2  v1.35.8+k3s1   v1.33.13+k3s2  v1.35.8   v1.33.13
+ v2.13.9   v1.34.11+rke2r1  v1.32.13+rke2r1  v1.34.11+k3s1  v1.32.12+k3s1  v1.34.11  v1.32.13
+ v2.12.13  v1.33.13+rke2r2  v1.31.14+rke2r1  v1.33.13+k3s2  v1.31.14+k3s1  v1.33.13  v1.31.14
+ v2.11.17  v1.32.13+rke2r1  v1.30.14+rke2r2  v1.32.12+k3s1  v1.30.14+k3s2  v1.32.13  v1.30.14
+ v2.10.12  v1.31.14+rke2r1  v1.28.15+rke2r1  v1.31.14+k3s1  v1.28.15+k3s1  v1.31.14  v1.28.15
+ v2.9.12   v1.30.14+rke2r2  v1.27.16+rke2r1  v1.30.14+k3s2  v1.27.16+k3s1  v1.30.14  v1.27.16
+ v2.8.15   v1.28.15+rke2r1  v1.25.16+rke2r1  v1.28.15+k3s1  v1.25.16+k3s4  v1.28.15  v1.25.16
+ v2.7.18   v1.27.16+rke2r1  v1.23.16+rke2r1  v1.27.16+k3s1  v1.23.16+k3s1  v1.27.16  v1.23.16
+#+end_src
+
+Or if you want the json this dumps that out instead: (example filtered through gron so its a bit easier to read in the readme)
+
+#+begin_src sh
+perdido query --json noerr | gron | head -n 40 | tail -n 20
+json[1].rke2 = {};
+json[1].rke2.max = "v1.35.8+rke2r1";
+json[1].rke2.min = "v1.33.13+rke2r2";
+json[2] = {};
+json[2].k3s = {};
+json[2].k3s.max = "v1.34.11+k3s1";
+json[2].k3s.min = "v1.32.12+k3s1";
+json[2].k8s = {};
+json[2].k8s.max = "v1.34.11";
+json[2].k8s.min = "v1.32.13";
+json[2].rancher_version = "v2.13.9";
+json[2].rke2 = {};
+json[2].rke2.max = "v1.34.11+rke2r1";
+json[2].rke2.min = "v1.32.13+rke2r1";
+json[3] = {};
+json[3].k3s = {};
+json[3].k3s.max = "v1.33.13+k3s2";
+json[3].k3s.min = "v1.31.14+k3s1";
+json[3].k8s = {};
+json[3].k8s.max = "v1.33.13";
+#+end_src
+
+** Building
+
+Its a cargo package you should be able to run it "normally", but dependency management is a you thing. Otherwise the nix flake provides all the batteries needed.
+
+Run the test suite which is mostly html fragment parsing to prove out functions really.
+
+#+begin_src sh
+nix flake check
+#+end_src
+
+
+Build the static linux binary to run elsewhere I guess, not sure why you'd want to.
+
+#+begin_src sh
+$ find $(nix build .#perdido-portable --print-out-paths --no-link) -iname perdido
+/nix/store/qvlngdb9i13nbm85kmx88mrnqmigg2fn-perdido-x86_64-unknown-linux-musl-0.1.0/bin/perdido
+#+end_src
+
+Windows:
+
+#+begin_src sh
+$ find $(nix build .#perdido-windows --print-out-paths --no-link) -iname perdido.exe
+/nix/store/q9yv6kfnpb9cfpp8ia5ks7dpzin5899j-perdido-x86_64-w64-mingw32-0.1.0/bin/perdido.exe
+#+end_src
+
+Macos you'll need to build/run on a nix equipped mac. But its basically the same as the linux example.

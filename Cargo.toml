@@ -1,0 +1,33 @@
+[package]
+name = "perdido"
+version = "0.0.1"
+edition = "2024"
+license = "BlueOak-1.0.0"
+
+[[bin]]
+name = "perdido"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6.7", features = ["derive"] }
+color-eyre = "0.6.5"
+futures = "0.3.34"
+reqwest = { version = "0.13.5", default-features = false }
+scraper = "0.27.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tabled = "0.22.0"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
+
+# aws-lc-sys (rustls' default crypto backend) fails to cross-compile its
+# jitterentropy C sources under the mingw-w64 toolchain, so Windows gets
+# native-tls (schannel, no C build) while every other target keeps rustls.
+[target.'cfg(not(windows))'.dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "rustls",
+] }
+
+[target.'cfg(windows)'.dependencies]
+reqwest = { version = "0.13.5", default-features = false, features = [
+  "native-tls",
+] }

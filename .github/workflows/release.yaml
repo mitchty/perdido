@@ -1,0 +1,318 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v[0-9]*.[0-9]*.[0-9]*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CACHIX_CACHE_NAME: mitchty
+
+# Tag releases and the rolling main-branch pre-release are independent lanes
+# so a version tag pushed mid-build doesn't get cancelled by, or cancel, a
+# pre-release build in flight.
+concurrency:
+  group: "release-${{ startsWith(github.ref, 'refs/tags/') && 'tag' || 'next' }}"
+  cancel-in-progress: false
+
+jobs:
+  check-linux:
+    name: Run flake checks Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        uses: insightsengineering/disk-space-reclaimer@v1
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Configure Cachix binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: ${{ env.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Run flake check
+        run: nix flake check -L
+
+  check-macos:
+    name: Run unit tests (nextest) macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Configure Cachix binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: ${{ env.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Run nextest
+        run: nix build .#checks.aarch64-darwin.perdido-nextest -L
+
+  build-linux:
+    name: Build Linux static binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        uses: insightsengineering/disk-space-reclaimer@v1
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Configure Cachix binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: ${{ env.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build Linux binary
+        run: nix build .#perdido-portable -L
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist
+          cp result/bin/perdido dist/perdido-linux-x86_64
+          chmod +x dist/perdido-linux-x86_64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perdido-linux-x86_64
+          path: dist/perdido-linux-x86_64
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows MinGW cross-compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        uses: insightsengineering/disk-space-reclaimer@v1
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Configure Cachix binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: ${{ env.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build Windows binary
+        run: nix build .#perdido-windows -L
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist
+          cp result/bin/perdido.exe dist/perdido-windows-x86_64.exe
+          chmod +x dist/perdido-windows-x86_64.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perdido-windows-x86_64
+          path: dist/perdido-windows-x86_64.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Configure Cachix binary cache
+        uses: cachix/cachix-action@v15
+        with:
+          name: ${{ env.CACHIX_CACHE_NAME }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: Build macOS binary
+        run: nix build .#perdido -L
+
+      - name: Prepare artifact
+        run: |
+          mkdir -p dist
+          cp result/bin/perdido dist/perdido-darwin-aarch64
+          chmod +x dist/perdido-darwin-aarch64
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perdido-darwin-aarch64
+          path: dist/perdido-darwin-aarch64
+          if-no-files-found: error
+
+  create-prerelease:
+    name: Create Pre-Release
+    if: ${{ github.ref_type == 'branch' }}
+    needs: [check-linux, check-macos, build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp artifacts/perdido-linux-x86_64/perdido-linux-x86_64 release/
+          cp artifacts/perdido-windows-x86_64/perdido-windows-x86_64.exe release/
+          cp artifacts/perdido-darwin-aarch64/perdido-darwin-aarch64 release/
+          chmod +x release/perdido-linux-x86_64 release/perdido-darwin-aarch64
+          ls -lh release/
+
+      - name: Delete existing pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view pre-release >/dev/null 2>&1; then
+            echo "Deleting existing pre-release"
+            gh release delete pre-release --yes --cleanup-tag
+          fi
+
+      - name: Create pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > /tmp/release-notes.md << 'RELEASE_NOTES'
+          Automated pre-release build from main branch
+
+          **Commit:** `${{ github.sha }}`
+
+          ### 📦 Downloads
+
+          **Linux (x86_64, static musl):**
+          ```bash
+          curl -Lo perdido https://github.com/${{ github.repository }}/releases/download/pre-release/perdido-linux-x86_64
+          chmod +x perdido
+          ./perdido
+          ```
+
+          **macOS (Apple Silicon):**
+          ```bash
+          curl -Lo perdido https://github.com/${{ github.repository }}/releases/download/pre-release/perdido-darwin-aarch64
+          chmod +x perdido
+          ./perdido
+          ```
+
+          **Windows (x86_64):**
+          Download `perdido-windows-x86_64.exe` and run it.
+
+          ---
+          ⚠️ **Note:** Automated build from the main development branch, could be sus.
+          RELEASE_NOTES
+
+          gh release create pre-release \
+            --title "Latest main" \
+            --notes-file /tmp/release-notes.md \
+            --prerelease \
+            release/perdido-linux-x86_64 \
+            release/perdido-windows-x86_64.exe \
+            release/perdido-darwin-aarch64
+
+  create-release:
+    name: Create Release
+    if: ${{ github.ref_type == 'tag' && startsWith(github.ref_name, 'v') }}
+    needs: [check-linux, check-macos, build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          cp artifacts/perdido-linux-x86_64/perdido-linux-x86_64 release/
+          cp artifacts/perdido-windows-x86_64/perdido-windows-x86_64.exe release/
+          cp artifacts/perdido-darwin-aarch64/perdido-darwin-aarch64 release/
+          chmod +x release/perdido-linux-x86_64 release/perdido-darwin-aarch64
+          ls -lh release/
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          CARGO_VERSION="$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')"
+
+          cat > /tmp/release-notes.md << RELEASE_NOTES
+          Release ${TAG}
+
+          **Commit:** \`${{ github.sha }}\`
+          **Version:** \`${CARGO_VERSION}\`
+
+          ### 📦 Downloads
+
+          **Linux (x86_64, static musl):**
+          \`\`\`bash
+          curl -Lo perdido https://github.com/${{ github.repository }}/releases/download/${TAG}/perdido-linux-x86_64
+          chmod +x perdido
+          ./perdido
+          \`\`\`
+
+          **macOS (Apple Silicon):**
+          \`\`\`bash
+          curl -Lo perdido https://github.com/${{ github.repository }}/releases/download/${TAG}/perdido-darwin-aarch64
+          chmod +x perdido
+          ./perdido
+          \`\`\`
+
+          **Windows (x86_64):**
+          Download \`perdido-windows-x86_64.exe\` and run it.
+          RELEASE_NOTES
+
+          gh release create "${TAG}" \
+            --target "${{ github.sha }}" \
+            --title "${TAG}" \
+            --notes-file /tmp/release-notes.md \
+            release/perdido-linux-x86_64 \
+            release/perdido-windows-x86_64.exe \
+            release/perdido-darwin-aarch64
