@@ -1,6 +1,6 @@
 [
   {
-    "rancher_version": "v2.15.1",
+    "rancher_version": "v2.15.2",
     "rke2": {
       "max": "v1.36.4+rke2r1",
       "min": "v1.34.11+rke2r1"
@@ -15,7 +15,7 @@
     }
   },
   {
-    "rancher_version": "v2.14.5",
+    "rancher_version": "v2.14.6",
     "rke2": {
       "max": "v1.35.8+rke2r1",
       "min": "v1.33.13+rke2r2"
@@ -30,7 +30,7 @@
     }
   },
   {
-    "rancher_version": "v2.13.9",
+    "rancher_version": "v2.13.10",
     "rke2": {
       "max": "v1.34.11+rke2r1",
       "min": "v1.32.13+rke2r1"
@@ -45,7 +45,7 @@
     }
   },
   {
-    "rancher_version": "v2.12.13",
+    "rancher_version": "v2.12.14",
     "rke2": {
       "max": "v1.33.13+rke2r2",
       "min": "v1.31.14+rke2r1"
@@ -60,7 +60,7 @@
     }
   },
   {
-    "rancher_version": "v2.11.17",
+    "rancher_version": "v2.11.18",
     "rke2": {
       "max": "v1.32.13+rke2r1",
       "min": "v1.30.14+rke2r2"
